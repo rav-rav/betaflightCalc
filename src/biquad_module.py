@@ -22,125 +22,154 @@
 
 import math
 
+class BiquadState():
+    b0 = b1 = b2 = a1 = a2 = 0.0
+    x1 = x2 = y1 = y2 = 0.0
+    d1 = d2 = 0.0
+    
 class Biquad:
   
-  # pretend enumeration
-  LOWPASS, HIGHPASS, BANDPASS, NOTCH, PEAK, LOWSHELF, HIGHSHELF = range(7)
+    # pretend enumeration
+    LOWPASS, HIGHPASS, BANDPASS, NOTCH, PEAK, LOWSHELF, HIGHSHELF = range(7)
+    
+    def __init__(self, typ, freq, srate, Q, dbGain=0, df2=True):
+        types = {
+            Biquad.LOWPASS : self.lowpass,
+            Biquad.HIGHPASS : self.highpass,
+            Biquad.BANDPASS : self.bandpass,
+            Biquad.NOTCH : self.notch,
+            Biquad.PEAK : self.peak,
+            Biquad.LOWSHELF : self.lowshelf,
+            Biquad.HIGHSHELF : self.highshelf
+        }
+        assert(types.has_key(typ))
+        freq = float(freq)
+        self.srate = float(srate)
+        Q = float(Q)
+        dbGain = float(dbGain)
+        self.a0 = self.a1 = self.a2 = 0
+        self.b0 = self.b1 = self.b2 = 0
+        self.x1 = self.x2 = 0
+        self.y1 = self.y2 = 0
+        # only used for peaking and shelving filter types
+        A = math.pow(10, dbGain / 40)
+        omega = 2 * math.pi * freq / self.srate
+        sn = math.sin(omega)
+        cs = math.cos(omega)
+        alpha = sn / (2 * Q)
+        beta = math.sqrt(A + A)
+        types[typ](A, omega, sn, cs, alpha, beta)
+        # prescale constants
+        self.b0 /= self.a0
+        self.b1 /= self.a0
+        self.b2 /= self.a0
+        self.a1 /= self.a0
+        self.a2 /= self.a0
+        
+        self.state = BiquadState()
+        self.state.b0 = self.b0
+        self.state.b1 = self.b1
+        self.state.b2 = self.b2
+        self.state.a1 = self.a1
+        self.state.a2 = self.a2
+        self.count = 0
+        self.df2 = df2
 
-  def __init__(self,typ, freq, srate, Q, dbGain = 0):
-      types = {
-	  Biquad.LOWPASS : self.lowpass,
-	  Biquad.HIGHPASS : self.highpass,
-	  Biquad.BANDPASS : self.bandpass,
-	  Biquad.NOTCH : self.notch,
-	  Biquad.PEAK : self.peak,
-	  Biquad.LOWSHELF : self.lowshelf,
-	  Biquad.HIGHSHELF : self.highshelf
-      }
-      assert(types.has_key(typ))
-      freq = float(freq)
-      self.srate = float(srate)
-      Q = float(Q)
-      dbGain = float(dbGain)
-      self.a0 = self.a1 = self.a2 = 0
-      self.b0 = self.b1 = self.b2 = 0
-      self.x1 = self.x2 = 0
-      self.y1 = self.y2 = 0
-      # only used for peaking and shelving filter types
-      A = math.pow(10, dbGain / 40)
-      omega = 2 * math.pi * freq / self.srate
-      sn = math.sin(omega)
-      cs = math.cos(omega)
-      alpha = sn / (2*Q)
-      beta = math.sqrt(A + A)
-      types[typ](A,omega,sn,cs,alpha,beta)
-      # prescale constants
-      self.b0 /= self.a0
-      self.b1 /= self.a0
-      self.b2 /= self.a0
-      self.a1 /= self.a0
-      self.a2 /= self.a0
-
-  def lowpass(self,A,omega,sn,cs,alpha,beta):
-    self.b0 = (1 - cs) /2
-    self.b1 = 1 - cs
-    self.b2 = (1 - cs) /2
-    self.a0 = 1 + alpha
-    self.a1 = -2 * cs
-    self.a2 = 1 - alpha
+    def lowpass(self, A, omega, sn, cs, alpha, beta):
+        self.b0 = (1 - cs) / 2
+        self.b1 = 1 - cs
+        self.b2 = (1 - cs) / 2
+        self.a0 = 1 + alpha
+        self.a1 = -2 * cs
+        self.a2 = 1 - alpha
     
-  def highpass(self,A,omega,sn,cs,alpha,beta):
-    self.b0 = (1 + cs) /2
-    self.b1 = -(1 + cs)
-    self.b2 = (1 + cs) /2
-    self.a0 = 1 + alpha
-    self.a1 = -2 * cs
-    self.a2 = 1 - alpha
+    def highpass(self, A, omega, sn, cs, alpha, beta):
+        self.b0 = (1 + cs) / 2
+        self.b1 = -(1 + cs)
+        self.b2 = (1 + cs) / 2
+        self.a0 = 1 + alpha
+        self.a1 = -2 * cs
+        self.a2 = 1 - alpha
     
-  def bandpass(self,A,omega,sn,cs,alpha,beta):
-    self.b0 = alpha
-    self.b1 = 0
-    self.b2 = -alpha
-    self.a0 = 1 + alpha
-    self.a1 = -2 * cs
-    self.a2 = 1 - alpha
+    def bandpass(self, A, omega, sn, cs, alpha, beta):
+        self.b0 = alpha
+        self.b1 = 0
+        self.b2 = -alpha
+        self.a0 = 1 + alpha
+        self.a1 = -2 * cs
+        self.a2 = 1 - alpha
     
-  def notch(self,A,omega,sn,cs,alpha,beta):
-    self.b0 = 1
-    self.b1 = -2 * cs
-    self.b2 = 1
-    self.a0 = 1 + alpha
-    self.a1 = -2 * cs
-    self.a2 = 1 - alpha
+    def notch(self, A, omega, sn, cs, alpha, beta):
+        self.b0 = 1
+        self.b1 = -2 * cs
+        self.b2 = 1
+        self.a0 = 1 + alpha
+        self.a1 = -2 * cs
+        self.a2 = 1 - alpha
     
-  def peak(self,A,omega,sn,cs,alpha,beta):
-    self.b0 = 1 + (alpha * A)
-    self.b1 = -2 * cs
-    self.b2 = 1 - (alpha * A)
-    self.a0 = 1 + (alpha /A)
-    self.a1 = -2 * cs
-    self.a2 = 1 - (alpha /A)
+    def peak(self, A, omega, sn, cs, alpha, beta):
+        self.b0 = 1 + (alpha * A)
+        self.b1 = -2 * cs
+        self.b2 = 1 - (alpha * A)
+        self.a0 = 1 + (alpha / A)
+        self.a1 = -2 * cs
+        self.a2 = 1 - (alpha / A)
     
-  def lowshelf(self,A,omega,sn,cs,alpha,beta):
-    self.b0 = A * ((A + 1) - (A - 1) * cs + beta * sn)
-    self.b1 = 2 * A * ((A - 1) - (A + 1) * cs)
-    self.b2 = A * ((A + 1) - (A - 1) * cs - beta * sn)
-    self.a0 = (A + 1) + (A - 1) * cs + beta * sn
-    self.a1 = -2 * ((A - 1) + (A + 1) * cs)
-    self.a2 = (A + 1) + (A - 1) * cs - beta * sn
+    def lowshelf(self, A, omega, sn, cs, alpha, beta):
+        self.b0 = A * ((A + 1) - (A - 1) * cs + beta * sn)
+        self.b1 = 2 * A * ((A - 1) - (A + 1) * cs)
+        self.b2 = A * ((A + 1) - (A - 1) * cs - beta * sn)
+        self.a0 = (A + 1) + (A - 1) * cs + beta * sn
+        self.a1 = -2 * ((A - 1) + (A + 1) * cs)
+        self.a2 = (A + 1) + (A - 1) * cs - beta * sn
     
-  def highshelf(self,A,omega,sn,cs,alpha,beta):
-    self.b0 = A * ((A + 1) + (A - 1) * cs + beta * sn)
-    self.b1 = -2 * A * ((A - 1) + (A + 1) * cs)
-    self.b2 = A * ((A + 1) + (A - 1) * cs - beta * sn)
-    self.a0 = (A + 1) - (A - 1) * cs + beta * sn
-    self.a1 = 2 * ((A - 1) - (A + 1) * cs)
-    self.a2 = (A + 1) - (A - 1) * cs - beta * sn
+    def highshelf(self, A, omega, sn, cs, alpha, beta):
+        self.b0 = A * ((A + 1) + (A - 1) * cs + beta * sn)
+        self.b1 = -2 * A * ((A - 1) + (A + 1) * cs)
+        self.b2 = A * ((A + 1) + (A - 1) * cs - beta * sn)
+        self.a0 = (A + 1) - (A - 1) * cs + beta * sn
+        self.a1 = 2 * ((A - 1) - (A + 1) * cs)
+        self.a2 = (A + 1) - (A - 1) * cs - beta * sn
       
-  # perform filtering function
-  def __call__(self,x):
-    y = self.b0 * x + self.b1 * self.x1 + self.b2 * self.x2 - self.a1 * self.y1 - self.a2 * self.y2
-    self.x2, self.x1 = self.x1, x
-    self.y2, self.y1 = self.y1, y
-    return y
+    # perform filtering function
+    def __call__(self, x):
+        self.count += 1
+        if self.df2:
+            return self.applyBiQuadFilterDf2T(x)
+        else:
+            return self.applyBiquadFilter(x)
+
+    def applyBiquadFilter(self, x):
+        y = self.b0 * x + self.b1 * self.x1 + self.b2 * self.x2 - self.a1 * self.y1 - self.a2 * self.y2
+        self.x2, self.x1 = self.x1, x
+        self.y2, self.y1 = self.y1, y
+        return y
+        
+    def applyBiQuadFilterDf2T(self, sample):
+        '''compute result'''
+        state = self.state
+        result = state.b0 * sample + state.d1       
+        state.d1 = state.b1 * sample - state.a1 * result + state.d2       
+        state.d2 = state.b2 * sample - state.a2 * result
+        return result
     
-  # provide a static result for a given frequency f
-  def result(self,f):
-    phi = (math.sin(math.pi * f * 2/(2.0 * self.srate)))**2
-    return ((self.b0+self.b1+self.b2)**2 - \
-    4*(self.b0*self.b1 + 4*self.b0*self.b2 + \
-    self.b1*self.b2)*phi + 16*self.b0*self.b2*phi*phi) / \
-    ((1+self.a1+self.a2)**2 - 4*(self.a1 + \
-    4*self.a2 + self.a1*self.a2)*phi + 16*self.a2*phi*phi)
+    # provide a static result for a given frequency f
+    def result(self, f):
+        phi = (math.sin(math.pi * f * 2 / (2.0 * self.srate))) ** 2
+        return ((self.b0 + self.b1 + self.b2) ** 2 - \
+        4 * (self.b0 * self.b1 + 4 * self.b0 * self.b2 + \
+        self.b1 * self.b2) * phi + 16 * self.b0 * self.b2 * phi * phi) / \
+        ((1 + self.a1 + self.a2) ** 2 - 4 * (self.a1 + \
+        4 * self.a2 + self.a1 * self.a2) * phi + 16 * self.a2 * phi * phi)
 
-  def log_result(self,f):
-    try:
-      r = 10 * math.log10(self.result(f))
-    except:
-      r = -200
-    return r
+    def log_result(self, f):
+        try:
+            r = 10 * math.log10(self.result(f))
+        except:
+            r = -200
+        return r
 
-  # return computed constants
-  def constants(self):
-    return self.b0,self.b1,self.b2,self.a1,self.a2
+    # return computed constants
+    def constants(self):
+        return self.b0, self.b1, self.b2, self.a1, self.a2
     

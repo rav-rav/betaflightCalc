@@ -94,7 +94,7 @@ if __name__ == '__main__':
         print "duration", time.time() - start
         raise
     
-    if 0:
+    if 1:
         #delay differences for lpf filters with different orders and frequencies
         maxPlotFreq = 200
         legend = []
@@ -103,11 +103,10 @@ if __name__ == '__main__':
         plt.xlabel("Hz")
         plt.ylabel("ms / dB")
         
-        for order in range(2, 3):
+        for order in range(2, 4):
             print "order=%i" % order
             
-            for freq in range(220, 301, 10):
-                print "freq=%i" % freq
+            for freq in range(80, 141, 10):
                 legend.append("%iHz" % freq)
                 Qs = getQs(order)
                 phases = []
