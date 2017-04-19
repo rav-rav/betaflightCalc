@@ -32,7 +32,8 @@ class Biquad:
     # pretend enumeration
     LOWPASS, HIGHPASS, BANDPASS, NOTCH, PEAK, LOWSHELF, HIGHSHELF = range(7)
     
-    def __init__(self, typ, freq, srate, Q, dbGain=0, df2=True):
+    def __init__(self, typ, freq, srate, Q, dbGain=0, df2=False, lastFilter=None):
+        #DF2 does NOT like chaning of constants
         types = {
             Biquad.LOWPASS : self.lowpass,
             Biquad.HIGHPASS : self.highpass,
@@ -49,8 +50,20 @@ class Biquad:
         dbGain = float(dbGain)
         self.a0 = self.a1 = self.a2 = 0
         self.b0 = self.b1 = self.b2 = 0
-        self.x1 = self.x2 = 0
-        self.y1 = self.y2 = 0
+        
+        if lastFilter:
+            lastState = lastFilter.state
+            self.x1 = lastState.x1
+            self.x2 = lastState.x2
+            self.y1 = lastState.y1
+            self.y2 = lastState.y2
+            self.d1 = lastState.d1
+            self.d2 = lastState.d2
+        else:
+            self.x1 = self.x2 = 0
+            self.y1 = self.y2 = 0
+            self.d1 = self.d2 = 0
+            
         # only used for peaking and shelving filter types
         A = math.pow(10, dbGain / 40)
         omega = 2 * math.pi * freq / self.srate
@@ -59,6 +72,7 @@ class Biquad:
         alpha = sn / (2 * Q)
         beta = math.sqrt(A + A)
         types[typ](A, omega, sn, cs, alpha, beta)
+        
         # prescale constants
         self.b0 /= self.a0
         self.b1 /= self.a0
@@ -72,7 +86,7 @@ class Biquad:
         self.state.b2 = self.b2
         self.state.a1 = self.a1
         self.state.a2 = self.a2
-        self.count = 0
+        
         self.df2 = df2
 
     def lowpass(self, A, omega, sn, cs, alpha, beta):
@@ -133,7 +147,14 @@ class Biquad:
       
     # perform filtering function
     def __call__(self, x):
-        self.count += 1
+        '''
+        r1 = self.applyBiQuadFilterDf2T(x)
+        r2 = self.applyBiquadFilter(x)
+        
+        assert (r2-r1) < 0.000000000001
+        return r1
+        '''
+
         if self.df2:
             return self.applyBiQuadFilterDf2T(x)
         else:
@@ -143,14 +164,19 @@ class Biquad:
         y = self.b0 * x + self.b1 * self.x1 + self.b2 * self.x2 - self.a1 * self.y1 - self.a2 * self.y2
         self.x2, self.x1 = self.x1, x
         self.y2, self.y1 = self.y1, y
+        self.state.x1 = self.x1
+        self.state.x2 = self.x2
+        self.state.y1 = self.y1
+        self.state.y2 = self.y2
         return y
         
     def applyBiQuadFilterDf2T(self, sample):
         '''compute result'''
-        state = self.state
-        result = state.b0 * sample + state.d1       
-        state.d1 = state.b1 * sample - state.a1 * result + state.d2       
-        state.d2 = state.b2 * sample - state.a2 * result
+        result = self.b0 * sample + self.d1       
+        self.d1 = self.b1 * sample - self.a1 * result + self.d2       
+        self.d2 = self.b2 * sample - self.a2 * result
+        self.state.d1 = self.d1
+        self.state.d2 = self.d2
         return result
     
     # provide a static result for a given frequency f
